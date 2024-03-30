@@ -47,29 +47,37 @@ def get_embeddings(texts, batch_size):
 
 
 def train_model(data, labels):
+    if torch.cuda.is_available():
+        boost_device = "cuda"
+    else:
+        boost_device = "cpu"
+
     # Initialize the XGBoost Classifier
-    # xgb_clf = xgb.XGBClassifier(objective="binary:logistic", random_state=3137)
-    #
-    # # Define hyperparameters and values to tune
-    # param_grid = {
-    #     'max_depth': [4, 5, 6, 7, 8, 9, 10],
-    #     'eta': np.arange(0.05, 0.5, 0.025)
-    # }
-    #
-    # print(f"Number of rows in training data: {len(data)}")
-    #
-    # # Perform hyperparameter tuning using GridSearchCV
-    # grid_search = GridSearchCV(estimator=xgb_clf, param_grid=param_grid, scoring="roc_auc",
-    #                            cv=5, verbose=3)
-    # grid_search.fit(data, labels)
-    #
-    # # Get the best hyperparameters
-    # best_max_depth = grid_search.best_params_['max_depth']
-    # best_eta = grid_search.best_params_['eta']
+    xgb_clf = xgb.XGBClassifier(objective="binary:logistic",
+                                device=boost_device,
+                                random_state=3137)
+
+    # Define hyperparameters and values to tune
+    param_grid = {
+        'max_depth': [4, 5, 6, 7, 8],
+        'eta': np.arange(0.05, 0.3, 0.05)
+    }
+
+    print(f"Number of rows in training data: {len(data)}")
+
+    # Perform hyperparameter tuning using GridSearchCV
+    grid_search = GridSearchCV(estimator=xgb_clf, param_grid=param_grid, scoring="roc_auc",
+                               cv=5, verbose=3)
+    grid_search.fit(data, labels)
+
+    # Get the best hyperparameters
+    best_max_depth = grid_search.best_params_['max_depth']
+    best_eta = grid_search.best_params_['eta']
 
     final_xgb_clf = xgb.XGBClassifier(objective="binary:logistic",
-                                      max_depth=6,
-                                      eta=0.1,
+                                      max_depth=best_max_depth,
+                                      eta=best_eta,
+                                      device=boost_device,
                                       random_state=3137)
     final_xgb_clf.fit(data, labels)
 
