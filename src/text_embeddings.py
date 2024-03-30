@@ -59,7 +59,7 @@ def train_model(data, labels):
 
     # Define hyperparameters and values to tune
     param_grid = {
-        'max_depth': [4, 5, 6, 7, 8],
+        'max_depth': [5, 6, 7, 8],
         'eta': np.arange(0.05, 0.3, 0.05)
     }
 
