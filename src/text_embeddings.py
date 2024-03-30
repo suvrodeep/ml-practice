@@ -84,25 +84,31 @@ def train_model(data, labels):
     return final_xgb_clf
 
 
-# Load training data and generate embeddings
-df = pd.read_csv("./data/twitter_sentiment_analysis/train.csv")
+def main():
+    # Load training data and generate embeddings
+    df = pd.read_csv("./data/twitter_sentiment_analysis/train.csv")
 
-# Split into train and test
-X_train, X_test, y_train, y_test = train_test_split(df.loc[:, df.columns != "label"], df["label"], test_size=0.3,
-                                                    stratify=df["label"])
+    # Split into train and test
+    X_train, X_test, y_train, y_test = train_test_split(df.loc[:, df.columns != "label"], df["label"], test_size=0.3,
+                                                        stratify=df["label"])
 
-# Get embeddings for the training and test set
-train_embeddings = get_embeddings(texts=X_train["tweet"].tolist(), batch_size=256)
-train_embeddings_df = pd.DataFrame(train_embeddings)
+    # Get embeddings for the training and test set
+    train_embeddings = get_embeddings(texts=X_train["tweet"].tolist(), batch_size=256)
+    train_embeddings_df = pd.DataFrame(train_embeddings)
 
-test_embeddings = get_embeddings(texts=X_test["tweet"].tolist(), batch_size=256)
-test_embeddings_df = pd.DataFrame(test_embeddings)
+    test_embeddings = get_embeddings(texts=X_test["tweet"].tolist(), batch_size=256)
+    test_embeddings_df = pd.DataFrame(test_embeddings)
 
-# Train model
-xgb_model = train_model(data=train_embeddings_df, labels=y_train)
+    # Train model
+    xgb_model = train_model(data=train_embeddings_df, labels=y_train)
 
-# Predict from model
-y_pred = xgb_model.predict(test_embeddings_df)
+    # Predict from model
+    y_pred = xgb_model.predict(test_embeddings_df)
 
-# Evaluate model
-print(f"Classification report:\n{classification_report(y_test, y_pred)}")
+    # Evaluate model
+    print(f"Classification report:\n{classification_report(y_test, y_pred)}")
+
+
+if __name__ == "__main__":
+    main()
+
