@@ -86,7 +86,7 @@ def train_model(data, labels):
 
 def main():
     # Load training data and generate embeddings
-    df = pd.read_csv("./data/twitter_sentiment_analysis/train.csv")
+    df = pd.read_csv("../data/twitter_sentiment_analysis/train.csv")
 
     # Split into train and test
     X_train, X_test, y_train, y_test = train_test_split(df.loc[:, df.columns != "label"], df["label"], test_size=0.3,
