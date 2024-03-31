@@ -1,11 +1,13 @@
 import pandas as pd
 import xgboost as xgb
+from typing import List
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import classification_report
 from transformers import AutoModel, AutoTokenizer
 from tqdm import tqdm
 import numpy as np
 import torch
+import re
 
 # Load the tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
@@ -17,20 +19,21 @@ model = model.to(device)
 
 
 # Function to encode text to get embeddings
-def get_embeddings(texts, batch_size):
+def get_embeddings(texts: List[str], batch_size: int):
     all_embeddings = []
     print(f"Total number of records: {len(texts)}")
     print(f"Num batches: {(len(texts) // batch_size) + 1}")
 
+    # Extract embeddings for the texts in batches
     for start_index in tqdm(range(0, len(texts), batch_size)):
-        # Print batch information
         batch_texts = texts[start_index:start_index + batch_size]
 
         # Generate tokens and move input tensors to GPU
         inputs = tokenizer(batch_texts, return_tensors="pt", padding=True, truncation=True, max_length=128)
         inputs = {key: value.to(device) for key, value in inputs.items()}
 
-        # Extract the embeddings. No grad because this is not a learning task
+        # Extract the embeddings. no_grad because the gradient does not need to be computed
+        # since this is not a learning task
         with torch.no_grad():
             outputs = model(**inputs)
 
@@ -46,7 +49,7 @@ def get_embeddings(texts, batch_size):
     return all_embeddings
 
 
-def train_model(data, labels):
+def train_model(data: pd.DataFrame, labels: pd.Series):
     if torch.cuda.is_available():
         boost_device = "cuda"
     else:
@@ -84,19 +87,36 @@ def train_model(data, labels):
     return final_xgb_clf
 
 
+def clean_sentence(text):
+    cleaned_text = re.sub(r'[^a-zA-Z0-9\s,.!?\-#@]', '', text)
+
+    return cleaned_text
+
+
 def main():
     # Load training data and generate embeddings
-    df = pd.read_csv("../data/twitter_sentiment_analysis/train.csv")
+    df = pd.read_csv("./data/tweets_classification/train.csv")
+    df.drop(columns=['hate_speech_count', 'offensive_language_count', 'neither_count', 'count'], inplace=True)
+    label_dict = {1: 'offensive_language/hate_speech',
+                  0: 'neutral'}
+
+    # Recode the class labels
+    df["class"] = df["class"].apply(lambda x: 0 if x == 2 else 1)
 
     # Split into train and test
-    X_train, X_test, y_train, y_test = train_test_split(df.loc[:, df.columns != "label"], df["label"], test_size=0.3,
-                                                        stratify=df["label"])
+    X_train, X_test, y_train, y_test = train_test_split(df.loc[:, df.columns != "class"], df["class"],
+                                                        test_size=0.3,
+                                                        stratify=df["class"])
+
+    for dataset in [X_train, X_test]:
+        dataset["tweet_cleaned"] = dataset["tweet"].apply(lambda x: clean_sentence(x))
+        print(f'Cleaned {len(dataset["tweet_cleaned"])} records in dataset')
 
     # Get embeddings for the training and test set
-    train_embeddings = get_embeddings(texts=X_train["tweet"].tolist(), batch_size=256)
+    train_embeddings = get_embeddings(texts=X_train["tweet_cleaned"].tolist(), batch_size=256)
     train_embeddings_df = pd.DataFrame(train_embeddings)
 
-    test_embeddings = get_embeddings(texts=X_test["tweet"].tolist(), batch_size=256)
+    test_embeddings = get_embeddings(texts=X_test["tweet_cleaned"].tolist(), batch_size=256)
     test_embeddings_df = pd.DataFrame(test_embeddings)
 
     # Train model
@@ -104,9 +124,11 @@ def main():
 
     # Predict from model
     y_pred = xgb_model.predict(test_embeddings_df)
+    y_pred_labels = [label_dict[x] for x in y_pred]
 
     # Evaluate model
-    print(f"Classification report:\n{classification_report(y_test, y_pred)}")
+    y_test_labels = [label_dict[x] for x in y_test]
+    print(f"Classification report:\n{classification_report(y_test_labels, y_pred_labels)}")
 
 
 if __name__ == "__main__":
