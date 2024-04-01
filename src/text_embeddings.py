@@ -5,6 +5,8 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import classification_report
 from transformers import AutoModel, AutoTokenizer
 from tqdm import tqdm
+from imblearn.over_sampling import ADASYN
+from collections import Counter
 import numpy as np
 import torch
 import re
@@ -66,7 +68,7 @@ def train_model(data: pd.DataFrame, labels: pd.Series):
         'eta': np.arange(0.05, 0.3, 0.05)
     }
 
-    print(f"Number of rows in training data: {len(data)}")
+    print(f"\nNumber of rows in training data: {len(data)}\n")
 
     # Perform hyperparameter tuning using GridSearchCV
     grid_search = GridSearchCV(estimator=xgb_clf, param_grid=param_grid, scoring="roc_auc",
@@ -91,6 +93,14 @@ def clean_sentence(text):
     cleaned_text = re.sub(r'[^a-zA-Z0-9\s,.!?\-#@]', '', text)
 
     return cleaned_text
+
+
+def resample(data: pd.DataFrame, label: pd.Series) -> tuple[pd.DataFrame, pd.Series]:
+    smote_model = ADASYN(random_state=3137)
+
+    data_resampled, label_resampled = smote_model.fit_resample(X=data, y=label)
+
+    return data_resampled, label_resampled
 
 
 def main():
@@ -119,8 +129,22 @@ def main():
     test_embeddings = get_embeddings(texts=X_test["tweet_cleaned"].tolist(), batch_size=256)
     test_embeddings_df = pd.DataFrame(test_embeddings)
 
+    # Check if SMOTE needs to be applied
+    class_counts = Counter(y_train)
+    class_counts = [value for _, value in sorted(class_counts.items(), key=lambda item: item[1])]
+    class_ratio = class_counts[0] / class_counts[1]
+
+    if class_ratio < 0.5:
+        train_df, train_labels = resample(data=train_embeddings_df, label=y_train)
+        print(f"Minority class to Majority class ratio is {round(class_ratio, 2)}. SMOTE applied")
+    else:
+        train_df = train_embeddings_df
+        train_labels = y_train
+        print(f"Minority class to Majority class ratio is {round(class_ratio, 2)} which is greater than 0.5. "
+              f"SMOTE not applied")
+
     # Train model
-    xgb_model = train_model(data=train_embeddings_df, labels=y_train)
+    xgb_model = train_model(data=train_df, labels=train_labels)
 
     # Predict from model
     y_pred = xgb_model.predict(test_embeddings_df)
